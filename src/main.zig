@@ -11,7 +11,13 @@ fn print_usage(out: std.fs.File) !void {
 }
 
 const ParsingError = error{
+    HelpRequested,
+    NoArgumentsSpecified,
     IP4PrefixTooBig,
+    IP4PrefixInvalid,
+    IP4AddressInvalid,
+    IP4NetmaskInvalid,
+    IP4CIDRInvalid,
 };
 
 const Ip4CIDR = struct {
@@ -117,69 +123,60 @@ const Ip4CIDR = struct {
     }
 };
 
-// TODO: use errdefer to print usage in case of error
-pub fn main() !u8 {
+fn parse_args() !struct { Ip4Address, u6 } {
     const argv = std.os.argv;
-    const stderr = std.io.getStdErr();
-    const stdout = std.io.getStdOut();
-
     // if no parameter specified print usage to stderr and exit
-    if (argv.len == 1) {
-        _ = try stderr.write("ipcalc: no parameter was specified\n");
-        try print_usage(stderr);
-        return 1;
-    }
+    if (argv.len == 1) return error.NoArgumentsSpecified;
 
     // we need to convert arg to slice with len, because initially it has type [*:0]u8
     const arg = argv[1][0..std.mem.len(argv[1])];
     // if parameter is -h or --help print usage to stdout
-    if (eql(u8, arg, "-h") or eql(u8, arg, "--help")) {
-        try print_usage(stdout);
-        return 0;
-    }
+    if (eql(u8, arg, "-h") or eql(u8, arg, "--help")) return error.HelpRequested;
 
     // if user provided "network netmask", we will have argv.len == 3
     // else we try to parse it as "network/prefix"
     var address: Address = undefined;
-    var prefix: usize = undefined;
+    var prefix: u6 = undefined;
 
     if (argv.len == 3) {
-        address = Address.parseIp4(arg, 0) catch {
-            std.debug.print("Invalid IP address\n", .{});
-            try print_usage(stderr);
-            return 1;
-        };
+        address = Address.parseIp4(arg, 0) catch return error.IP4AddressInvalid;
         const netmask_string = argv[2][0..std.mem.len(argv[2])];
-        const netmask = Address.parseIp4(netmask_string, 0) catch {
-            std.debug.print("Invalid IP netmask\n", .{});
-            try print_usage(stderr);
-            return 1;
-        };
+        const netmask = Address.parseIp4(netmask_string, 0) catch return error.IP4NetmaskInvalid;
         _ = netmask;
         // TODO: Finish netmask parsing. How to check netmask validity?
     } else {
         // if we get CIDR notation, split arg to two slices
-        const index = std.mem.indexOfScalar(u8, arg, '/') orelse {
-            std.debug.print("Invalid prefix CIDR\n", .{});
-            try print_usage(stderr);
-            return 1;
-        };
-        address = Address.parseIp4(arg[0..index], 0) catch {
-            std.debug.print("Invalid IP address\n", .{});
-            try print_usage(stderr);
-            return 1;
-        };
-        prefix = try std.fmt.parseInt(usize, arg[index + 1 ..], 10);
-        if (prefix > 32) {
-            std.debug.print("Invalid prefix length\n", .{});
-            try print_usage(stderr);
-            return 1;
-        }
+        const index = std.mem.indexOfScalar(u8, arg, '/') orelse return error.IP4CIDRInvalid;
+        address = Address.parseIp4(arg[0..index], 0) catch return error.IP4AddressInvalid;
+        prefix = std.fmt.parseInt(u6, arg[index + 1 ..], 10) catch return error.IP4PrefixInvalid;
+        if (prefix > 32) return error.IP4PrefixTooBig;
     }
 
+    return .{ address.in, prefix };
+}
+
+pub fn main() !u8 {
+    const stderr = std.io.getStdErr();
+    const stdout = std.io.getStdOut();
+
+    const parsed = parse_args() catch |err| {
+        switch (err) {
+            error.HelpRequested => {
+                try print_usage(stdout);
+                return 0;
+            },
+            error.IP4CIDRInvalid, error.IP4NetmaskInvalid, error.IP4AddressInvalid, error.NoArgumentsSpecified, error.IP4PrefixInvalid, error.IP4PrefixTooBig => {
+                try stderr.writer().print("error: {!}\n", .{err});
+                try print_usage(stderr);
+                return 1;
+            },
+        }
+    };
+    const address = parsed[0];
+    const prefix = parsed[1];
+
     const writer = stdout.writer();
-    const u6_prefix: u6 = @intCast(prefix & 0b111111);
-    var adr = try Ip4CIDR.fromStdIp4Address(address.in, u6_prefix);
+    var adr = try Ip4CIDR.fromStdIp4Address(address, prefix);
     try adr.print_info(writer);
 
     return 0;
