@@ -117,96 +117,6 @@ const Ip4CIDR = struct {
     }
 };
 
-fn print_info_ip4(out: std.fs.File, address: Ip4Address, prefix: usize) !void {
-    const writer = out.writer();
-    if (prefix > 32) return error.IP4PrefixTooBig;
-
-    // output address
-    _ = try writer.write("Address:\n");
-    const bytes = @as(*const [4]u8, @ptrCast(&address.sa.addr));
-    try writer.print("{}.{}.{}.{}\n", .{ bytes[0], bytes[1], bytes[2], bytes[3] });
-    // std.debug.print("{}", .{address.sa.addr});
-    // calculate and output netmask
-    const maxInt: u32 = std.math.maxInt(u32);
-    var netmask: u32 = 0;
-    if (prefix == 0) {
-        netmask = 0;
-    } else if (prefix == 32) {
-        netmask = maxInt;
-    } else {
-        netmask = maxInt << (0 -% @as(u5, @intCast(prefix & 0b11111)));
-    }
-    _ = try writer.write("Netmask (=prefix):\n");
-    const netmask_bytes = @as(*const [4]u8, @ptrCast(&netmask));
-    try writer.print("{}.{}.{}.{} = {}\n", .{ netmask_bytes[3], netmask_bytes[2], netmask_bytes[1], netmask_bytes[0], prefix });
-
-    // calculate and print wildcard mask
-    const wildcard = ~netmask;
-    _ = try writer.write("Wildcard:\n");
-    const wildcard_bytes = @as(*const [4]u8, @ptrCast(&wildcard));
-    try writer.print("{}.{}.{}.{}\n", .{
-        wildcard_bytes[3],
-        wildcard_bytes[2],
-        wildcard_bytes[1],
-        wildcard_bytes[0],
-    });
-
-    // skip other params if prefix == 32
-    if (prefix == 32) {
-        return;
-    }
-
-    // network
-    const network = address.sa.addr; // & @bitReverse(netmask);
-    _ = try writer.write("Network:\n");
-    const network_bytes = @as(*const [4]u8, @ptrCast(&network));
-    try writer.print("{}.{}.{}.{}\n", .{
-        network_bytes[0] & netmask_bytes[3],
-        network_bytes[1] & netmask_bytes[2],
-        network_bytes[2] & netmask_bytes[1],
-        network_bytes[3] & netmask_bytes[0],
-    });
-
-    // broadcast
-    const broadcast = network;
-    _ = try writer.write("Broadcast:\n");
-    const broadcast_bytes = @as(*const [4]u8, @ptrCast(&broadcast));
-    try writer.print("{}.{}.{}.{}\n", .{
-        broadcast_bytes[0] | wildcard_bytes[3],
-        broadcast_bytes[1] | wildcard_bytes[2],
-        broadcast_bytes[2] | wildcard_bytes[1],
-        broadcast_bytes[3] | wildcard_bytes[0],
-    });
-
-    // skip other params if prefix == 31
-    if (prefix == 31) {
-        return;
-    }
-
-    // first host
-    _ = try writer.write("First host:\n");
-    try writer.print("{}.{}.{}.{}\n", .{
-        network_bytes[0] & netmask_bytes[3],
-        network_bytes[1] & netmask_bytes[2],
-        network_bytes[2] & netmask_bytes[1],
-        network_bytes[3] & netmask_bytes[0] + 1,
-    });
-
-    // last host
-    _ = try writer.write("Last host:\n");
-    try writer.print("{}.{}.{}.{}\n", .{
-        broadcast_bytes[0] | wildcard_bytes[3],
-        broadcast_bytes[1] | wildcard_bytes[2],
-        broadcast_bytes[2] | wildcard_bytes[1],
-        (broadcast_bytes[3] | wildcard_bytes[0]) - 1,
-    });
-
-    // number of hosts
-    const num_possible_hosts = std.math.pow(usize, 2, (32 - prefix)) - 2;
-    _ = try writer.write("Possible hosts:\n");
-    try writer.print("{d}\n", .{num_possible_hosts});
-}
-
 // TODO: use errdefer to print usage in case of error
 pub fn main() !u8 {
     const argv = std.os.argv;
@@ -271,8 +181,6 @@ pub fn main() !u8 {
     const u6_prefix: u6 = @intCast(prefix & 0b111111);
     var adr = try Ip4CIDR.fromStdIp4Address(address.in, u6_prefix);
     try adr.print_info(writer);
-
-    try print_info_ip4(stdout, address.in, prefix);
 
     return 0;
 }
