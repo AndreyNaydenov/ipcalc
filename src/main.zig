@@ -1,7 +1,6 @@
 const std = @import("std");
 const eql = std.mem.eql;
 const Address = std.net.Address;
-const Writer = std.fs.File.Writer;
 const Ip4Address = std.net.Ip4Address;
 
 const usage = "usage: ipcalc <prefix>\n" ++ "prefix:\n\t\"network/prefix\"\n\t\"network netmask\"\n";
@@ -50,39 +49,39 @@ const Ip4CIDR = struct {
         return netmask;
     }
 
-    fn get_num_possible_hosts(self: *Self) u32 {
+    fn get_num_possible_hosts(self: Self) u32 {
         return std.math.pow(u32, 2, (32 - self.prefix)) - 2;
     }
 
-    fn print_address(self: *Self, writer: Writer) !void {
+    fn print_address(self: Self, writer: anytype) !void {
         try print_u32_as_bytes(self.address, writer);
     }
 
-    fn print_netmask(self: *Self, writer: Writer) !void {
+    fn print_netmask(self: Self, writer: anytype) !void {
         try print_u32_as_bytes(self.netmask, writer);
     }
 
-    fn print_wildcard(self: *Self, writer: Writer) !void {
+    fn print_wildcard(self: Self, writer: anytype) !void {
         try print_u32_as_bytes(~self.netmask, writer);
     }
 
-    fn print_network(self: *Self, writer: Writer) !void {
+    fn print_network(self: Self, writer: anytype) !void {
         try print_u32_as_bytes(self.address & self.netmask, writer);
     }
 
-    fn print_broadcast(self: *Self, writer: Writer) !void {
+    fn print_broadcast(self: Self, writer: anytype) !void {
         try print_u32_as_bytes(self.address | ~self.netmask, writer);
     }
 
-    fn print_first_host(self: *Self, writer: Writer) !void {
+    fn print_first_host(self: Self, writer: anytype) !void {
         try print_u32_as_bytes((self.address & self.netmask) + 1, writer);
     }
 
-    fn print_last_host(self: *Self, writer: Writer) !void {
+    fn print_last_host(self: Self, writer: anytype) !void {
         try print_u32_as_bytes((self.address | ~self.netmask) - 1, writer);
     }
 
-    fn print_u32_as_bytes(value: u32, writer: Writer) !void {
+    fn print_u32_as_bytes(value: u32, writer: anytype) !void {
         const bytes = @as(*const [4]u8, @ptrCast(&value));
         try writer.print(
             "{}.{}.{}.{}",
@@ -90,7 +89,7 @@ const Ip4CIDR = struct {
         );
     }
 
-    fn print_info(self: *Self, writer: Writer) !void {
+    fn print_info(self: Self, writer: anytype) !void {
         _ = try writer.write("Address:\n");
         try self.print_address(writer);
         _ = try writer.write("\n");
@@ -182,4 +181,48 @@ pub fn main() !u8 {
     return 0;
 }
 
-// TODO: Add tests
+test "test address with different prefixes" {
+    const allocator = std.testing.allocator;
+    var list = std.ArrayList(u8).init(allocator);
+    defer list.deinit();
+    const w = list.writer();
+
+    const address = try Ip4Address.parse("10.11.12.13", 0);
+    const adr0 = try Ip4CIDR.fromStdIp4Address(address, 0);
+    const adr1 = try Ip4CIDR.fromStdIp4Address(address, 8);
+    const adr2 = try Ip4CIDR.fromStdIp4Address(address, 12);
+    const adr3 = try Ip4CIDR.fromStdIp4Address(address, 16);
+    const adr4 = try Ip4CIDR.fromStdIp4Address(address, 24);
+    const adr5 = try Ip4CIDR.fromStdIp4Address(address, 32);
+
+    try adr0.print_address(w);
+    _ = try w.write("\n");
+    try adr0.print_netmask(w);
+    _ = try w.write("\n");
+    try adr1.print_netmask(w);
+    _ = try w.write("\n");
+    try adr2.print_netmask(w);
+    _ = try w.write("\n");
+    try adr3.print_netmask(w);
+    _ = try w.write("\n");
+    try adr4.print_netmask(w);
+    _ = try w.write("\n");
+    try adr5.print_netmask(w);
+
+    const captured_output = try list.toOwnedSlice();
+    defer allocator.free(captured_output);
+    const expect =
+        \\10.11.12.13
+        \\0.0.0.0
+        \\255.0.0.0
+        \\255.240.0.0
+        \\255.255.0.0
+        \\255.255.255.0
+        \\255.255.255.255
+    ;
+    try std.testing.expectEqualStrings(expect, captured_output);
+}
+
+test "test parsing errors" {
+    try std.testing.expect(false);
+}
