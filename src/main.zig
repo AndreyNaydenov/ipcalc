@@ -122,8 +122,8 @@ const Ip4CIDR = struct {
     }
 };
 
-fn parse_args() !struct { Ip4Address, u6 } {
-    const argv = std.os.argv;
+fn parse_args(argv: [][*:0]const u8) !struct { Ip4Address, u6 } {
+    // const argv = std.os.argv;
     // if no parameter specified print usage to stderr and exit
     if (argv.len == 1) return error.NoArgumentsSpecified;
 
@@ -157,8 +157,9 @@ fn parse_args() !struct { Ip4Address, u6 } {
 pub fn main() !u8 {
     const stderr = std.io.getStdErr();
     const stdout = std.io.getStdOut();
+    const argv = std.os.argv;
 
-    const parsed = parse_args() catch |err| {
+    const parsed = parse_args(argv) catch |err| {
         switch (err) {
             error.HelpRequested => {
                 try print_usage(stdout);
@@ -181,7 +182,8 @@ pub fn main() !u8 {
     return 0;
 }
 
-test "test address with different prefixes" {
+test "address with different prefixes" {
+    // Too much code for this type of test, maybe I am doing something wrong?
     const allocator = std.testing.allocator;
     var list = std.ArrayList(u8).init(allocator);
     defer list.deinit();
@@ -223,6 +225,35 @@ test "test address with different prefixes" {
     try std.testing.expectEqualStrings(expect, captured_output);
 }
 
-test "test parsing errors" {
-    try std.testing.expect(false);
+test "no args error" {
+    // This looks awful, but I don't know a better way to fake std.os.argv type
+    const argv0: [][*:0]const u8 = @constCast(@ptrCast(&[_][*:0]const u8{
+        "ipcalc",
+    }));
+    const p = parse_args(argv0);
+    try std.testing.expectError(error.NoArgumentsSpecified, p);
+}
+
+test "invalid CIDR error" {
+    const argv0: [][*:0]const u8 = @constCast(@ptrCast(&[_][*:0]const u8{ "ipcalc", "assdfsdb" }));
+    const p = parse_args(argv0);
+    try std.testing.expectError(error.IP4CIDRInvalid, p);
+}
+
+test "invalid address error" {
+    const argv0: [][*:0]const u8 = @constCast(@ptrCast(&[_][*:0]const u8{ "ipcalc", "172.260.40.40/24" }));
+    const p = parse_args(argv0);
+    try std.testing.expectError(error.IP4AddressInvalid, p);
+}
+
+test "invalid prefix error" {
+    const argv0: [][*:0]const u8 = @constCast(@ptrCast(&[_][*:0]const u8{ "ipcalc", "172.40.40.40/df" }));
+    const p = parse_args(argv0);
+    try std.testing.expectError(error.IP4PrefixInvalid, p);
+}
+
+test "prefix too big error" {
+    const argv0: [][*:0]const u8 = @constCast(@ptrCast(&[_][*:0]const u8{ "ipcalc", "172.40.40.40/33" }));
+    const p = parse_args(argv0);
+    try std.testing.expectError(error.IP4PrefixTooBig, p);
 }
