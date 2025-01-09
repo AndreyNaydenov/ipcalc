@@ -154,21 +154,23 @@ fn parse_args(argv: [][*:0]const u8) !struct { Ip4Address, u6 } {
     return .{ address.in, prefix };
 }
 
-pub fn main() !u8 {
+pub fn main() !void {
     const stderr = std.io.getStdErr();
     const stdout = std.io.getStdOut();
     const argv = std.os.argv;
 
     const parsed = parse_args(argv) catch |err| {
         switch (err) {
+            // if help was requested, write usage to stdout and exit successfully
             error.HelpRequested => {
                 try print_usage(stdout);
-                return 0;
+                std.process.exit(0);
             },
+            // if we get parsing error, write usage to stderr and exit with error
             error.IP4CIDRInvalid, error.IP4NetmaskInvalid, error.IP4AddressInvalid, error.NoArgumentsSpecified, error.IP4PrefixInvalid, error.IP4PrefixTooBig => {
                 try stderr.writer().print("error: {!}\n", .{err});
                 try print_usage(stderr);
-                return 1;
+                std.process.exit(1);
             },
         }
     };
@@ -179,7 +181,7 @@ pub fn main() !u8 {
     var adr = try Ip4CIDR.fromStdIp4Address(address, prefix);
     try adr.print_info(writer);
 
-    return 0;
+    std.process.exit(0);
 }
 
 test "address with different prefixes" {
