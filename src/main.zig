@@ -53,35 +53,35 @@ const Ip4CIDR = struct {
         return std.math.pow(u32, 2, (32 - self.prefix)) - 2;
     }
 
-    fn print_address(self: Self, writer: anytype) !void {
+    fn print_address(self: Self, writer: std.io.AnyWriter) !void {
         try print_u32_as_bytes(self.address, writer);
     }
 
-    fn print_netmask(self: Self, writer: anytype) !void {
+    fn print_netmask(self: Self, writer: std.io.AnyWriter) !void {
         try print_u32_as_bytes(self.netmask, writer);
     }
 
-    fn print_wildcard(self: Self, writer: anytype) !void {
+    fn print_wildcard(self: Self, writer: std.io.AnyWriter) !void {
         try print_u32_as_bytes(~self.netmask, writer);
     }
 
-    fn print_network(self: Self, writer: anytype) !void {
+    fn print_network(self: Self, writer: std.io.AnyWriter) !void {
         try print_u32_as_bytes(self.address & self.netmask, writer);
     }
 
-    fn print_broadcast(self: Self, writer: anytype) !void {
+    fn print_broadcast(self: Self, writer: std.io.AnyWriter) !void {
         try print_u32_as_bytes(self.address | ~self.netmask, writer);
     }
 
-    fn print_first_host(self: Self, writer: anytype) !void {
+    fn print_first_host(self: Self, writer: std.io.AnyWriter) !void {
         try print_u32_as_bytes((self.address & self.netmask) + 1, writer);
     }
 
-    fn print_last_host(self: Self, writer: anytype) !void {
+    fn print_last_host(self: Self, writer: std.io.AnyWriter) !void {
         try print_u32_as_bytes((self.address | ~self.netmask) - 1, writer);
     }
 
-    fn print_u32_as_bytes(value: u32, writer: anytype) !void {
+    fn print_u32_as_bytes(value: u32, writer: std.io.AnyWriter) !void {
         const bytes = @as(*const [4]u8, @ptrCast(&value));
         try writer.print(
             "{}.{}.{}.{}",
@@ -89,7 +89,7 @@ const Ip4CIDR = struct {
         );
     }
 
-    fn print_info(self: Self, writer: anytype) !void {
+    fn print_info(self: Self, writer: std.io.AnyWriter) !void {
         _ = try writer.write("Address:\n");
         try self.print_address(writer);
         _ = try writer.write("\n");
@@ -122,7 +122,7 @@ const Ip4CIDR = struct {
     }
 };
 
-fn parse_args(argv: [][*:0]const u8) !struct { Ip4Address, u6 } {
+fn parse_args(argv: [][*:0]u8) !struct { Ip4Address, u6 } {
     // const argv = std.os.argv;
     // if no parameter specified print usage to stderr and exit
     if (argv.len == 1) return error.NoArgumentsSpecified;
@@ -178,8 +178,9 @@ pub fn main() !void {
     const prefix = parsed[1];
 
     const writer = stdout.writer();
+    const anywriter = writer.any();
     var adr = try Ip4CIDR.fromStdIp4Address(address, prefix);
-    try adr.print_info(writer);
+    try adr.print_info(anywriter);
 
     std.process.exit(0);
 }
